@@ -94,7 +94,11 @@ class DeepSeekJudge:
             )
         except Exception as exc:  # noqa: BLE001 - plugin should fail open
             if self.logger:
-                self.logger.warning("SilenceGuard judge failed: %s", exc)
+                self.logger.warning(
+                    "SilenceGuard judge failed: %s (%s)",
+                    exc.__class__.__name__,
+                    exc,
+                )
             decision = Decision(UNCERTAIN, "judge_request_failed", source="judge")
 
         self._set_cache(cache_key, decision)

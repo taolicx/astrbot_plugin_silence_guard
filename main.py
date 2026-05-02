@@ -10,6 +10,7 @@ from astrbot.api.star import Context, Star, register
 
 try:
     from .deepseek_judge import DeepSeekJudge
+    from .plugin_compat import build_focus_session_key, clear_focus_session, mark_focus_session_expired
     from .silence_logic import (
         MUTE,
         NO_REPLY,
@@ -29,6 +30,7 @@ try:
     )
 except ImportError:
     from deepseek_judge import DeepSeekJudge
+    from plugin_compat import build_focus_session_key, clear_focus_session, mark_focus_session_expired
     from silence_logic import (
         MUTE,
         NO_REPLY,
@@ -140,6 +142,7 @@ class SilenceGuardPlugin(Star):
         event.set_extra("silence_guard_decision", decision.to_dict())
 
         if decision.action in {NO_REPLY, MUTE}:
+            self._sync_focus_session(event)
             event.should_call_llm(True)
             event.stop_event()
             return
@@ -249,3 +252,10 @@ class SilenceGuardPlugin(Star):
             if isinstance(text, str) and text.strip():
                 parts.append(text.strip())
         return "\n".join(parts).strip()
+
+    def _sync_focus_session(self, event: AstrMessageEvent) -> None:
+        session_key = build_focus_session_key(event)
+        if not session_key:
+            return
+        mark_focus_session_expired(session_key)
+        clear_focus_session(session_key)

@@ -1,6 +1,7 @@
 import sys
 import time
 import unittest
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -17,6 +18,7 @@ from silence_logic import (
 )
 
 from deepseek_judge import DeepSeekJudge
+from plugin_compat import build_focus_session_key, clear_focus_session, mark_focus_session_expired
 
 
 BASE_CONFIG = {
@@ -56,6 +58,15 @@ class DummyContext:
 
     def get_all_providers(self):
         return [self.provider]
+
+
+class DummyEvent:
+    def __init__(self, origin: str = "default(aiocqhttp)", sender_id: str = "1556592332") -> None:
+        self.unified_msg_origin = origin
+        self._sender_id = sender_id
+
+    def get_sender_id(self):
+        return self._sender_id
 
 
 class SilenceLogicTest(unittest.TestCase):
@@ -169,6 +180,35 @@ class SilenceLogicTest(unittest.TestCase):
             now=time.time(),
         )
         self.assertEqual(decision.action, NO_REPLY)
+
+    def test_focus_session_key_builder(self):
+        key = build_focus_session_key(DummyEvent())
+        self.assertEqual(key, "default(aiocqhttp)::1556592332")
+
+    def test_focus_session_clear_helper(self):
+        module = types.SimpleNamespace(_FOCUS_SESSIONS={"default(aiocqhttp)::1556592332": object()})
+        sys.modules["astrbot_plugin_focus_session"] = module
+        try:
+            cleared = clear_focus_session("default(aiocqhttp)::1556592332", ("astrbot_plugin_focus_session",))
+            self.assertTrue(cleared)
+            self.assertNotIn("default(aiocqhttp)::1556592332", module._FOCUS_SESSIONS)
+        finally:
+            sys.modules.pop("astrbot_plugin_focus_session", None)
+
+    def test_focus_session_mark_expired_helper(self):
+        session = type("Session", (), {"expires_at": 123, "last_notice_at": 456})()
+        module = types.SimpleNamespace(_FOCUS_SESSIONS={"default(aiocqhttp)::1556592332": session})
+        sys.modules["astrbot_plugin_focus_session"] = module
+        try:
+            marked = mark_focus_session_expired(
+                "default(aiocqhttp)::1556592332",
+                ("astrbot_plugin_focus_session",),
+            )
+            self.assertTrue(marked)
+            self.assertEqual(session.expires_at, 0)
+            self.assertEqual(session.last_notice_at, 0)
+        finally:
+            sys.modules.pop("astrbot_plugin_focus_session", None)
 
     def test_short_ack_is_uncertain_when_active(self):
         state = ConversationState()
