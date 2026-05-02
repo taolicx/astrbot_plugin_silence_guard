@@ -1,0 +1,128 @@
+{
+  "enabled": {
+    "type": "bool",
+    "description": "启用插件",
+    "default": true
+  },
+  "enable_private": {
+    "type": "bool",
+    "description": "私聊启用",
+    "default": true
+  },
+  "enable_group": {
+    "type": "bool",
+    "description": "群聊启用",
+    "default": true
+  },
+  "smart_mode": {
+    "type": "bool",
+    "description": "启用智能模式",
+    "hint": "规则无法确定时，调用 DeepSeek 做一次低成本分类判断。",
+    "default": true
+  },
+  "judge_mode": {
+    "type": "string",
+    "description": "判断模型调用模式",
+    "options": ["ambiguous_only"],
+    "default": "ambiguous_only"
+  },
+  "judge_api_key": {
+    "type": "string",
+    "description": "DeepSeek API Key",
+    "hint": "也可以不填，改用环境变量 DEEPSEEK_API_KEY 或 DS_API_KEY。",
+    "default": ""
+  },
+  "judge_base_url": {
+    "type": "string",
+    "description": "DeepSeek Base URL",
+    "default": "https://api.deepseek.com"
+  },
+  "judge_model": {
+    "type": "string",
+    "description": "DeepSeek 判断模型",
+    "default": "deepseek-v4-flash"
+  },
+  "judge_timeout_seconds": {
+    "type": "float",
+    "description": "判断请求超时秒数",
+    "default": 3
+  },
+  "judge_max_tokens": {
+    "type": "int",
+    "description": "判断模型最大输出 token",
+    "default": 96
+  },
+  "judge_context_turns": {
+    "type": "int",
+    "description": "传给判断模型的最近上下文轮数",
+    "default": 6
+  },
+  "judge_min_confidence": {
+    "type": "float",
+    "description": "判断模型最低置信度",
+    "hint": "低于该值时按 fallback_when_uncertain 处理。",
+    "default": 0.72
+  },
+  "judge_cache_seconds": {
+    "type": "int",
+    "description": "判断结果缓存秒数",
+    "default": 120
+  },
+  "fallback_when_uncertain": {
+    "type": "string",
+    "description": "不确定时的默认行为",
+    "options": ["reply", "no_reply"],
+    "default": "reply"
+  },
+  "default_mute_seconds": {
+    "type": "int",
+    "description": "闭嘴类指令默认静默秒数",
+    "default": 600
+  },
+  "farewell_cooldown_seconds": {
+    "type": "int",
+    "description": "互道晚安/拜拜后的收尾冷却秒数",
+    "default": 1800
+  },
+  "active_chat_seconds": {
+    "type": "int",
+    "description": "最近机器人回复后视为连续对话的秒数",
+    "default": 300
+  },
+  "reply_once_to_farewell": {
+    "type": "bool",
+    "description": "允许机器人对用户首次晚安/拜拜回复一次",
+    "default": true
+  },
+  "silence_keywords": {
+    "type": "list",
+    "description": "闭嘴/别回复类关键词扩展",
+    "default": []
+  },
+  "farewell_keywords": {
+    "type": "list",
+    "description": "晚安/拜拜类收尾词扩展",
+    "default": []
+  },
+  "wake_keywords": {
+    "type": "list",
+    "description": "恢复回复类关键词扩展",
+    "default": []
+  },
+  "hard_closers": {
+    "type": "list",
+    "description": "强收尾短语扩展",
+    "default": []
+  },
+  "ack_keywords": {
+    "type": "list",
+    "description": "短确认/附和词扩展",
+    "default": []
+  },
+  "debug_log": {
+    "type": "bool",
+    "description": "输出调试日志",
+    "default": false
+  }
+}
+

@@ -1,0 +1,14 @@
+本文件夹内容：
+
+1. astrbot_plugin_silence_guard/
+   AstrBot 插件源码目录，安装时复制这个目录到 AstrBot 插件目录即可。
+
+2. tests/
+   规则判断的本地单元测试。
+
+3. README.md
+   插件安装、配置和使用说明。
+
+4. SPEC.md
+   首版技术规格与实现取舍。
+
