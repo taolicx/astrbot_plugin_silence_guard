@@ -111,6 +111,65 @@ class SilenceLogicTest(unittest.TestCase):
         apply_decision_to_state(decision, state, BASE_CONFIG)
         self.assertFalse(state.is_muted())
 
+    def test_more_builtin_silence_words_mute(self):
+        state = ConversationState()
+        for text in ("别回我", "不回我", "不回复", "别打扰", "暂停回复", "先别说话", "shut up"):
+            decision = analyze_rules(
+                text,
+                state,
+                BASE_CONFIG,
+                is_directed=True,
+                is_group=False,
+                now=time.time(),
+            )
+            self.assertEqual(decision.action, MUTE, text)
+
+    def test_user_keywords_extend_builtin_keywords(self):
+        state = ConversationState()
+        config = {**BASE_CONFIG, "silence_keywords": ["收声"]}
+        custom = analyze_rules(
+            "收声",
+            state,
+            config,
+            is_directed=True,
+            is_group=False,
+            now=time.time(),
+        )
+        builtin = analyze_rules(
+            "闭嘴",
+            state,
+            config,
+            is_directed=True,
+            is_group=False,
+            now=time.time(),
+        )
+        self.assertEqual(custom.action, MUTE)
+        self.assertEqual(builtin.action, MUTE)
+
+    def test_more_builtin_wake_words(self):
+        state = ConversationState(mute_until=time.time() + 100)
+        decision = analyze_rules(
+            "继续说",
+            state,
+            BASE_CONFIG,
+            is_directed=True,
+            is_group=False,
+            now=time.time(),
+        )
+        self.assertEqual(decision.action, WAKE)
+
+    def test_more_hard_closers_no_reply(self):
+        state = ConversationState()
+        decision = analyze_rules(
+            "打住",
+            state,
+            BASE_CONFIG,
+            is_directed=True,
+            is_group=False,
+            now=time.time(),
+        )
+        self.assertEqual(decision.action, NO_REPLY)
+
     def test_short_ack_is_uncertain_when_active(self):
         state = ConversationState()
         state.remember_bot("这个问题可以这样处理。", time.time())
