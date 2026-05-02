@@ -18,7 +18,12 @@ from silence_logic import (
 )
 
 from deepseek_judge import DeepSeekJudge
-from plugin_compat import build_focus_session_key, clear_focus_session, mark_focus_session_expired
+from plugin_compat import (
+    build_focus_session_key,
+    clear_focus_session,
+    has_focus_session,
+    mark_focus_session_expired,
+)
 
 
 BASE_CONFIG = {
@@ -83,6 +88,32 @@ class SilenceLogicTest(unittest.TestCase):
         self.assertEqual(decision.action, MUTE)
         self.assertEqual(decision.mute_seconds, 600)
 
+    def test_plain_silence_command_only_stops_current_reply(self):
+        state = ConversationState()
+        decision = analyze_rules(
+            "闭嘴",
+            state,
+            BASE_CONFIG,
+            is_directed=True,
+            is_group=False,
+            now=time.time(),
+        )
+        self.assertEqual(decision.action, NO_REPLY)
+        self.assertEqual(decision.mute_seconds, 0)
+
+    def test_hush_only_stops_focus_session(self):
+        state = ConversationState()
+        decision = analyze_rules(
+            "嘘",
+            state,
+            BASE_CONFIG,
+            is_directed=True,
+            is_group=False,
+            now=time.time(),
+        )
+        self.assertEqual(decision.action, NO_REPLY)
+        self.assertEqual(decision.reason, "hush_command")
+
     def test_hypothetical_silence_is_not_muted(self):
         state = ConversationState()
         decision = analyze_rules(
@@ -133,6 +164,19 @@ class SilenceLogicTest(unittest.TestCase):
                 is_group=False,
                 now=time.time(),
             )
+            self.assertEqual(decision.action, NO_REPLY, text)
+
+    def test_duration_hint_silence_words_mute(self):
+        state = ConversationState()
+        for text in ("别回我 10 分钟", "暂停回复一会", "先别说话半小时"):
+            decision = analyze_rules(
+                text,
+                state,
+                BASE_CONFIG,
+                is_directed=True,
+                is_group=False,
+                now=time.time(),
+            )
             self.assertEqual(decision.action, MUTE, text)
 
     def test_user_keywords_extend_builtin_keywords(self):
@@ -154,8 +198,8 @@ class SilenceLogicTest(unittest.TestCase):
             is_group=False,
             now=time.time(),
         )
-        self.assertEqual(custom.action, MUTE)
-        self.assertEqual(builtin.action, MUTE)
+        self.assertEqual(custom.action, NO_REPLY)
+        self.assertEqual(builtin.action, NO_REPLY)
 
     def test_more_builtin_wake_words(self):
         state = ConversationState(mute_until=time.time() + 100)
@@ -189,6 +233,7 @@ class SilenceLogicTest(unittest.TestCase):
         module = types.SimpleNamespace(_FOCUS_SESSIONS={"default(aiocqhttp)::1556592332": object()})
         sys.modules["astrbot_plugin_focus_session"] = module
         try:
+            self.assertTrue(has_focus_session("default(aiocqhttp)::1556592332", ("astrbot_plugin_focus_session",)))
             cleared = clear_focus_session("default(aiocqhttp)::1556592332", ("astrbot_plugin_focus_session",))
             self.assertTrue(cleared)
             self.assertNotIn("default(aiocqhttp)::1556592332", module._FOCUS_SESSIONS)

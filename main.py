@@ -10,7 +10,12 @@ from astrbot.api.star import Context, Star, register
 
 try:
     from .deepseek_judge import DeepSeekJudge
-    from .plugin_compat import build_focus_session_key, clear_focus_session, mark_focus_session_expired
+    from .plugin_compat import (
+        build_focus_session_key,
+        clear_focus_session,
+        has_focus_session,
+        mark_focus_session_expired,
+    )
     from .silence_logic import (
         MUTE,
         NO_REPLY,
@@ -30,7 +35,12 @@ try:
     )
 except ImportError:
     from deepseek_judge import DeepSeekJudge
-    from plugin_compat import build_focus_session_key, clear_focus_session, mark_focus_session_expired
+    from plugin_compat import (
+        build_focus_session_key,
+        clear_focus_session,
+        has_focus_session,
+        mark_focus_session_expired,
+    )
     from silence_logic import (
         MUTE,
         NO_REPLY,
@@ -113,7 +123,9 @@ class SilenceGuardPlugin(Star):
         session_key = event.unified_msg_origin
         state = self._state(session_key)
         now = time.time()
-        is_directed = bool(event.is_at_or_wake_command or is_private)
+        focus_session_key = build_focus_session_key(event)
+        in_focus_session = has_focus_session(focus_session_key)
+        is_directed = bool(event.is_at_or_wake_command or is_private or in_focus_session)
 
         decision = analyze_rules(
             text,
