@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import time
 from typing import Any
 
@@ -48,9 +47,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "enable_group": True,
     "smart_mode": True,
     "judge_mode": "ambiguous_only",
-    "judge_api_key": "",
-    "judge_base_url": "https://api.deepseek.com",
-    "judge_model": "deepseek-v4-flash",
+    "judge_provider_id": "",
     "judge_timeout_seconds": 3,
     "judge_max_tokens": 96,
     "judge_context_turns": 6,
@@ -81,11 +78,11 @@ class SilenceGuardPlugin(Star):
         super().__init__(context)
         self.raw_config = config or {}
         self.states: dict[str, ConversationState] = {}
-        self.judge = DeepSeekJudge(self._config(), logger=logger)
+        self.judge = DeepSeekJudge(self._config(), self.context, logger=logger)
 
     async def initialize(self) -> None:
         cfg = self._config()
-        self.judge = DeepSeekJudge(cfg, logger=logger)
+        self.judge = DeepSeekJudge(cfg, self.context, logger=logger)
 
     @filter.event_message_type(EventMessageType.ALL, priority=100)
     async def silence_guard(self, event: AstrMessageEvent) -> None:
@@ -115,7 +112,15 @@ class SilenceGuardPlugin(Star):
             now=now,
         )
         if decision.action == UNCERTAIN and self._should_use_judge(cfg):
-            judge_decision = await self._judge(text, state, cfg, is_group, is_directed, now)
+            judge_decision = await self._judge(
+                text,
+                state,
+                cfg,
+                is_group,
+                is_directed,
+                now,
+                umo=event.unified_msg_origin,
+            )
             decision = self._merge_uncertain(cfg, judge_decision)
         elif decision.action == UNCERTAIN:
             decision = self._fallback_decision(cfg, decision)
@@ -158,10 +163,6 @@ class SilenceGuardPlugin(Star):
             cfg.update(dict(self.raw_config))
         except Exception:  # noqa: BLE001 - AstrBotConfig should be dict-like
             pass
-
-        env_key = os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("DS_API_KEY")
-        if not cfg.get("judge_api_key") and env_key:
-            cfg["judge_api_key"] = env_key
         return cfg
 
     def _should_use_judge(self, cfg: dict[str, Any]) -> bool:
@@ -169,7 +170,7 @@ class SilenceGuardPlugin(Star):
             return False
         if cfg.get("judge_mode", "ambiguous_only") != "ambiguous_only":
             return False
-        return bool(cfg.get("judge_api_key"))
+        return self.judge.available()
 
     async def _judge(
         self,
@@ -179,9 +180,11 @@ class SilenceGuardPlugin(Star):
         is_group: bool,
         is_directed: bool,
         now: float,
+        *,
+        umo: str | None = None,
     ) -> Decision:
         if self.judge.config != cfg:
-            self.judge = DeepSeekJudge(cfg, logger=logger)
+            self.judge = DeepSeekJudge(cfg, self.context, logger=logger)
         context_turns = max(1, int(cfg.get("judge_context_turns", 6)))
         recent_context = list(state.history)[-context_turns:]
         state_summary = {
@@ -201,6 +204,7 @@ class SilenceGuardPlugin(Star):
             current_user_message=text,
             recent_context=recent_context,
             state_summary=state_summary,
+            umo=umo,
         )
 
     def _merge_uncertain(self, cfg: dict[str, Any], decision: Decision) -> Decision:

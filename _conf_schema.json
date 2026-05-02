@@ -17,7 +17,7 @@
   "smart_mode": {
     "type": "bool",
     "description": "启用智能模式",
-    "hint": "规则无法确定时，调用 DeepSeek 做一次低成本分类判断。",
+    "hint": "规则无法确定时，调用 AstrBot 已接入的模型做一次分类判断。",
     "default": true
   },
   "judge_mode": {
@@ -26,21 +26,11 @@
     "options": ["ambiguous_only"],
     "default": "ambiguous_only"
   },
-  "judge_api_key": {
+  "judge_provider_id": {
     "type": "string",
-    "description": "DeepSeek API Key",
-    "hint": "也可以不填，改用环境变量 DEEPSEEK_API_KEY 或 DS_API_KEY。",
-    "default": ""
-  },
-  "judge_base_url": {
-    "type": "string",
-    "description": "DeepSeek Base URL",
-    "default": "https://api.deepseek.com"
-  },
-  "judge_model": {
-    "type": "string",
-    "description": "DeepSeek 判断模型",
-    "default": "deepseek-v4-flash"
+    "description": "判断模型提供商",
+    "_special": "select_provider",
+    "hint": "留空时默认使用 AstrBot 当前正在使用的 LLM 提供商。"
   },
   "judge_timeout_seconds": {
     "type": "float",
@@ -125,4 +115,3 @@
     "default": false
   }
 }
-

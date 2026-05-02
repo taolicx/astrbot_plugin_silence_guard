@@ -3,12 +3,20 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
-from .silence_logic import Decision, MUTE, NO_REPLY, REPLY, UNCERTAIN, WAKE
+try:
+    from astrbot.api.star import Context
+    from astrbot.core.provider import Provider
+except ImportError:  # pragma: no cover - allow local unit tests without AstrBot installed
+    from typing import Any as Context
+    from typing import Any as Provider
+
+try:
+    from .silence_logic import Decision, MUTE, NO_REPLY, REPLY, UNCERTAIN, WAKE
+except ImportError:
+    from silence_logic import Decision, MUTE, NO_REPLY, REPLY, UNCERTAIN, WAKE
 
 
 SYSTEM_PROMPT = """你是 AstrBot 插件里的“不回复判断器”。你的任务不是聊天，而是判断当前用户消息是否应该让机器人继续回复。
@@ -41,13 +49,21 @@ class JudgeResult:
 
 
 class DeepSeekJudge:
-    def __init__(self, config: dict[str, Any], logger: Any | None = None) -> None:
+    def __init__(self, config: dict[str, Any], context: Context, logger: Any | None = None) -> None:
         self.config = config
+        self.context = context
         self.logger = logger
         self._cache: dict[str, tuple[float, Decision]] = {}
 
     def available(self) -> bool:
-        return bool(self.config.get("judge_api_key")) and bool(self.config.get("judge_base_url"))
+        provider_id = self._provider_id()
+        if provider_id is not None:
+            try:
+                provider = self.context.get_provider_by_id(provider_id)
+            except Exception:
+                provider = None
+            return self._is_provider(provider)
+        return self._get_default_provider() is not None
 
     async def classify(
         self,
@@ -55,21 +71,26 @@ class DeepSeekJudge:
         current_user_message: str,
         recent_context: list[dict[str, str]],
         state_summary: dict[str, Any],
+        umo: str | None = None,
     ) -> Decision:
-        if not self.available():
-            return Decision(UNCERTAIN, "judge_not_configured", source="judge")
+        provider = self._resolve_provider(umo)
+        if provider is None:
+            return Decision(UNCERTAIN, "judge_provider_not_found", source="judge")
 
-        cache_key = self._cache_key(current_user_message, recent_context, state_summary)
+        cache_key = self._cache_key(current_user_message, recent_context, state_summary, provider)
         cached = self._get_cache(cache_key)
         if cached:
             return cached
 
         try:
-            decision = await asyncio.to_thread(
-                self._request,
-                current_user_message,
-                recent_context,
-                state_summary,
+            decision = await asyncio.wait_for(
+                self._request(
+                    provider,
+                    current_user_message=current_user_message,
+                    recent_context=recent_context,
+                    state_summary=state_summary,
+                ),
+                timeout=float(self.config.get("judge_timeout_seconds", 3)),
             )
         except Exception as exc:  # noqa: BLE001 - plugin should fail open
             if self.logger:
@@ -79,62 +100,38 @@ class DeepSeekJudge:
         self._set_cache(cache_key, decision)
         return decision
 
-    def _request(
+    async def _request(
         self,
+        provider: Provider,
+        *,
         current_user_message: str,
         recent_context: list[dict[str, str]],
         state_summary: dict[str, Any],
     ) -> Decision:
-        base_url = str(self.config.get("judge_base_url", "https://api.deepseek.com")).rstrip("/")
-        endpoint = f"{base_url}/chat/completions"
-        body = {
-            "model": self.config.get("judge_model", "deepseek-v4-flash"),
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": json.dumps(
-                        {
-                            "recent_context": recent_context,
-                            "current_user_message": current_user_message,
-                            "state": state_summary,
-                        },
-                        ensure_ascii=False,
-                    ),
-                },
-            ],
-            "response_format": {"type": "json_object"},
-            "thinking": {"type": "disabled"},
-            "temperature": 0,
-            "max_tokens": int(self.config.get("judge_max_tokens", 96)),
-        }
-        headers = {
-            "Authorization": f"Bearer {self.config.get('judge_api_key')}",
-            "Content-Type": "application/json",
-        }
-        req = urllib.request.Request(
-            endpoint,
-            data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-            headers=headers,
-            method="POST",
+        payload = json.dumps(
+            {
+                "recent_context": recent_context,
+                "current_user_message": current_user_message,
+                "state": state_summary,
+            },
+            ensure_ascii=False,
         )
-        timeout = float(self.config.get("judge_timeout_seconds", 3))
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                payload = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            error_body = exc.read().decode("utf-8", errors="replace")[:500]
-            raise RuntimeError(f"DeepSeek HTTP {exc.code}: {error_body}") from exc
+        response = await provider.text_chat(
+            prompt=payload,
+            system_prompt=SYSTEM_PROMPT,
+            model=provider.get_model() or None,
+            temperature=0,
+            max_tokens=int(self.config.get("judge_max_tokens", 96)),
+        )
 
-        content = (
-            payload.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
-        )
-        if not content:
+        content = getattr(response, "completion_text", "") or ""
+        if not content.strip():
             return Decision(UNCERTAIN, "judge_empty_content", source="judge")
 
-        parsed = json.loads(content)
+        parsed = self._extract_json(content)
+        if parsed is None:
+            return Decision(UNCERTAIN, "judge_invalid_json", source="judge")
+
         action = str(parsed.get("action", UNCERTAIN)).upper()
         if action not in {REPLY, NO_REPLY, MUTE, WAKE, UNCERTAIN}:
             action = UNCERTAIN
@@ -149,15 +146,94 @@ class DeepSeekJudge:
             source="judge",
         )
 
+    def _resolve_provider(self, umo: str | None) -> Provider | None:
+        provider_id = self._provider_id()
+        if provider_id:
+            provider = self.context.get_provider_by_id(provider_id)
+            if self._is_provider(provider):
+                return provider
+            if self.logger:
+                self.logger.warning("SilenceGuard judge provider `%s` not found.", provider_id)
+            return None
+
+        provider = self._get_default_provider(umo)
+        if self._is_provider(provider):
+            return provider
+        return None
+
+    def _get_default_provider(self, umo: str | None = None) -> Provider | None:
+        try:
+            provider = self.context.get_using_provider(umo=umo)
+        except Exception:
+            provider = None
+        if self._is_provider(provider):
+            return provider
+
+        try:
+            providers = self.context.get_all_providers()
+        except Exception:
+            providers = []
+        if providers:
+            first_provider = providers[0]
+            if self._is_provider(first_provider):
+                return first_provider
+        return None
+
+    def _is_provider(self, value: object) -> bool:
+        provider_type = Provider if isinstance(Provider, type) else None
+        if provider_type is not None:
+            return isinstance(value, provider_type)
+        return all(
+            hasattr(value, attr)
+            for attr in ("text_chat", "get_model", "meta")
+        )
+
+    def _provider_id(self) -> str | None:
+        provider_id = self.config.get("judge_provider_id")
+        if isinstance(provider_id, str) and provider_id.strip():
+            return provider_id.strip()
+        return None
+
+    def _extract_json(self, content: str) -> dict[str, Any] | None:
+        text = content.strip()
+        if not text:
+            return None
+        if text.startswith("```"):
+            text = text.strip("`")
+            if text.startswith("json"):
+                text = text[4:].strip()
+        try:
+            parsed = json.loads(text)
+            return parsed if isinstance(parsed, dict) else None
+        except Exception:
+            pass
+
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                parsed = json.loads(text[start : end + 1])
+                return parsed if isinstance(parsed, dict) else None
+            except Exception:
+                return None
+        return None
+
     def _cache_key(
         self,
         current_user_message: str,
         recent_context: list[dict[str, str]],
         state_summary: dict[str, Any],
+        provider: Provider,
     ) -> str:
         last_bot = str(state_summary.get("last_bot_message", ""))[-80:]
+        provider_id = ""
+        try:
+            provider_id = provider.meta().id
+        except Exception:
+            provider_id = provider.provider_config.get("id", "") if hasattr(provider, "provider_config") else ""
         return json.dumps(
             {
+                "p": provider_id,
                 "m": current_user_message.strip().lower(),
                 "b": last_bot.strip().lower(),
                 "c": recent_context[-2:],
@@ -184,3 +260,6 @@ class DeepSeekJudge:
         if ttl <= 0:
             return
         self._cache[key] = (time.time() + ttl, decision)
+
+
+ProviderJudge = DeepSeekJudge
