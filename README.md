@@ -1,11 +1,12 @@
 # AstrBot Silence Guard
 
-一个 AstrBot 回复守门插件：在消息进入正常 LLM 回复前，先判断“这句话是不是不该继续回”。明确场景直接用规则拦截，模糊场景才调用 AstrBot 已接入的模型做分类。
+一个 AstrBot 回复守门和连续监听插件：被 @ 或唤醒词触发后，可在一段时间内免 @ 连续对话；消息进入正常 LLM 回复前，也会先判断“这句话是不是不该继续回”。明确场景直接用规则拦截，模糊场景才调用 AstrBot 已接入的模型做分类。
 
 ## 能做什么
 
 - 用户说“闭嘴”“别回我”“不用回复”时，不发确认，直接静默。
 - 用户说“闭嘴 10 分钟”时，在指定时间内停止回复。
+- 用户 @ 或唤醒机器人后，默认 5 分钟内同一用户可免 @ 连续对话。
 - 机器人刚说“晚安/拜拜”，用户也回“晚安/拜拜”时，不再继续礼貌循环。
 - 最近连续对话里，用户只回“嗯嗯/好吧/算了/不用了”这类模糊收尾时，可调用平台内模型判断是否不回复。
 - 群聊未指向机器人的普通消息默认不主动干预。
@@ -18,6 +19,9 @@
 
 ```json
 {
+  "listen_mode_enabled": true,
+  "listen_seconds": 300,
+  "listen_refresh_on_each_message": true,
   "smart_mode": true,
   "judge_mode": "ambiguous_only",
   "judge_provider_id": "",
@@ -31,6 +35,23 @@
 
 `judge_provider_id` 留空时，会默认使用 AstrBot 当前正在使用的 LLM 提供商。
 
+## 内置连续监听
+
+`silence_guard` 已经整合原 `astrbot_plugin_focus_session` 的持续监听能力。启用 `listen_mode_enabled` 后，用户在群聊里 @ 机器人或使用唤醒词后，插件会为该用户打开一个监听窗口；窗口内普通消息会被视为继续对话并交给正常 LLM 链路。
+
+常用配置：
+
+```json
+{
+  "listen_mode_enabled": true,
+  "listen_seconds": 300,
+  "listen_refresh_on_each_message": true,
+  "listen_ignore_wake_prefix_commands": true
+}
+```
+
+合并版只需要安装本插件。旧的 `astrbot_plugin_focus_session` 可以禁用或卸载；本插件仍会兼容清理旧插件残留的监听窗口，方便平滑过渡。
+
 ## 内置词库
 
 配置面板里的关键词列表已经预置常用说法，可以直接看见并增删。包括：
@@ -43,9 +64,9 @@
 
 你在面板里追加自己的词时，插件会和内置词一起使用，不会因为填了扩展词就丢掉默认词。
 
-## 与 focus_session 联动
+## 结束连续监听
 
-如果你同时装了 `astrbot_plugin_focus_session`，本插件在判定为“嘘/闭嘴/别回我/不用回复”这类不回复指令时，会同步清掉该插件当前会话里的连续对话状态。
+本插件在判定为“嘘/闭嘴/别回我/不用回复”这类不回复指令时，会同步清掉当前用户的内置连续监听状态。
 
 普通“嘘”“闭嘴”“别回我”只会停止当前这段连续对话，不会让本插件把后面每一条消息都拦掉。只有“闭嘴 10 分钟”“先别说话半小时”这类带时长的说法，才会进入持续静默。
 
@@ -59,7 +80,7 @@
 关闭所有连续对话
 ```
 
-这些指令会清空 `focus_session` 的所有会话窗口，同时清掉本插件自己的临时对话状态。
+这些指令会清空内置连续监听窗口，同时清掉本插件自己的临时对话状态。
 
 你也可以在配置项 `admin_clear_all_commands` 里自定义这些管理员指令，例如：
 
@@ -101,7 +122,7 @@
 
 ## 文件说明
 
-- `main.py`：AstrBot 插件入口，负责监听事件、停止事件、记录机器人回复。
+- `main.py`：AstrBot 插件入口，负责连续监听、停止事件、记录机器人回复。
 - `silence_logic.py`：纯规则、状态和时长解析。
 - `deepseek_judge.py`：基于 AstrBot Provider 的分类判断器。
 - `_conf_schema.json`：AstrBot 管理面板配置项。

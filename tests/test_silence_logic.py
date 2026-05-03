@@ -18,6 +18,7 @@ from silence_logic import (
 )
 
 from deepseek_judge import DeepSeekJudge
+from main import ListenSession, SilenceGuardPlugin
 from plugin_compat import (
     build_focus_session_key,
     clear_all_focus_sessions,
@@ -87,14 +88,62 @@ class DummyContext:
     def get_all_providers(self):
         return [self.provider]
 
+    def get_config(self):
+        return {"wake_prefix": ["/", "!"]}
+
 
 class DummyEvent:
-    def __init__(self, origin: str = "default(aiocqhttp)", sender_id: str = "1556592332") -> None:
+    def __init__(
+        self,
+        origin: str = "default(aiocqhttp)",
+        sender_id: str = "1556592332",
+        text: str = "",
+        private: bool = False,
+        group_id: str = "10001",
+        self_id: str = "123456",
+        admin: bool = False,
+    ) -> None:
         self.unified_msg_origin = origin
         self._sender_id = sender_id
+        self.message_str = text
+        self._private = private
+        self._group_id = group_id
+        self._self_id = self_id
+        self.role = "admin" if admin else "member"
+        self.is_wake = False
+        self.is_at_or_wake_command = False
+        self.call_llm = False
+        self.sent = []
 
     def get_sender_id(self):
         return self._sender_id
+
+    def get_self_id(self):
+        return self._self_id
+
+    def get_group_id(self):
+        return "" if self._private else self._group_id
+
+    def is_private_chat(self):
+        return self._private
+
+    def get_message_str(self):
+        return self.message_str
+
+    def get_messages(self):
+        return []
+
+    def is_admin(self):
+        return self.role == "admin"
+
+    def should_call_llm(self, call_llm: bool) -> None:
+        self.call_llm = call_llm
+
+    async def send(self, result):
+        self.sent.append(result)
+
+    def plain_result(self, text: str):
+        return type("DummyResult", (), {"text": text, "stop_event": lambda self: self})()
 
 
 class SilenceLogicTest(unittest.TestCase):
@@ -288,6 +337,41 @@ class SilenceLogicTest(unittest.TestCase):
             self.assertEqual(module._FOCUS_SESSIONS, {})
         finally:
             sys.modules.pop("data.plugins.astrbot_plugin_focus_session.main", None)
+
+    def test_builtin_listen_session_marks_followup_as_wake(self):
+        plugin = SilenceGuardPlugin(DummyContext(), {})
+        key = build_focus_session_key(DummyEvent())
+        plugin.listen_sessions[key] = ListenSession(expires_at=time.time() + 60)
+        event = DummyEvent(text="继续讲")
+        cfg = plugin._config()
+        active = self._run_async(
+            plugin._prepare_listen_session(
+                event,
+                cfg,
+                time.time(),
+                build_focus_session_key(event),
+            )
+        )
+        self.assertTrue(active)
+        self.assertTrue(event.is_wake)
+        self.assertTrue(event.is_at_or_wake_command)
+        self.assertFalse(event.call_llm)
+
+    def test_builtin_listen_session_clear_current(self):
+        plugin = SilenceGuardPlugin(DummyContext(), {})
+        event = DummyEvent()
+        key = build_focus_session_key(event)
+        plugin.listen_sessions[key] = ListenSession(expires_at=time.time() + 60)
+        plugin._sync_focus_session(event)
+        self.assertNotIn(key, plugin.listen_sessions)
+
+    def test_builtin_listen_session_clear_all(self):
+        plugin = SilenceGuardPlugin(DummyContext(), {})
+        plugin.listen_sessions["a"] = ListenSession(expires_at=time.time() + 60)
+        plugin.listen_sessions["b"] = ListenSession(expires_at=time.time() + 60)
+        cleared = plugin._clear_all_sessions()
+        self.assertEqual(cleared, 2)
+        self.assertEqual(plugin.listen_sessions, {})
 
     def test_custom_admin_command_list_parser(self):
         commands = parse_command_list("清场，全部停止\n停止监听, 清场")

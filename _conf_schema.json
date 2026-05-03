@@ -14,6 +14,88 @@
     "description": "群聊启用",
     "default": true
   },
+  "listen_mode_enabled": {
+    "type": "bool",
+    "description": "启用内置连续监听",
+    "hint": "开启后，用户 @ 或唤醒机器人后，在监听窗口内无需再次 @ 即可继续对话。",
+    "default": true
+  },
+  "listen_seconds": {
+    "type": "int",
+    "description": "连续监听窗口秒数",
+    "default": 300
+  },
+  "listen_refresh_on_each_message": {
+    "type": "bool",
+    "description": "每条连续消息刷新监听窗口",
+    "default": true
+  },
+  "listen_enable_private": {
+    "type": "bool",
+    "description": "私聊启用连续监听",
+    "default": true
+  },
+  "listen_enable_group": {
+    "type": "bool",
+    "description": "群聊启用连续监听",
+    "default": true
+  },
+  "listen_ignore_self_messages": {
+    "type": "bool",
+    "description": "连续监听忽略机器人自己发出的消息",
+    "default": true
+  },
+  "listen_ignore_wake_prefix_commands": {
+    "type": "bool",
+    "description": "监听窗口内忽略带唤醒前缀的命令消息",
+    "hint": "避免 /插件命令 被当成连续对话发给 LLM。",
+    "default": true
+  },
+  "listen_sender_whitelist": {
+    "type": "list",
+    "description": "连续监听用户白名单",
+    "hint": "留空表示不限制用户。填写用户 ID 后，只有列表内用户会进入连续监听。",
+    "default": []
+  },
+  "listen_sender_blacklist": {
+    "type": "list",
+    "description": "连续监听用户黑名单",
+    "hint": "填写用户 ID 后，这些用户不会进入连续监听。",
+    "default": []
+  },
+  "listen_group_whitelist": {
+    "type": "list",
+    "description": "连续监听群白名单",
+    "hint": "留空表示不限制群。填写群 ID 后，只有列表内群会启用连续监听。",
+    "default": []
+  },
+  "listen_group_blacklist": {
+    "type": "list",
+    "description": "连续监听群黑名单",
+    "hint": "填写群 ID 后，这些群不会启用连续监听。",
+    "default": []
+  },
+  "listen_send_activation_notice": {
+    "type": "bool",
+    "description": "开启连续监听时发送提示",
+    "default": false
+  },
+  "listen_activation_notice": {
+    "type": "string",
+    "description": "连续监听开启提示文案",
+    "hint": "可使用 {seconds} 和 {minutes}。",
+    "default": "已进入连续对话模式，{minutes} 分钟内不用再 @ 我。"
+  },
+  "listen_send_expire_notice": {
+    "type": "bool",
+    "description": "连续监听超时时发送提示",
+    "default": false
+  },
+  "listen_expire_notice": {
+    "type": "string",
+    "description": "连续监听超时提示文案",
+    "default": "连续对话已超时，需要再 @ 或使用唤醒词。"
+  },
   "smart_mode": {
     "type": "bool",
     "description": "启用智能模式",
