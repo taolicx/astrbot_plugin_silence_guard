@@ -43,6 +43,26 @@ def clear_focus_session(
     return cleared
 
 
+def clear_all_focus_sessions(
+    module_names: Iterable[str] = FOCUS_SESSION_MODULE_CANDIDATES,
+) -> int:
+    cleared = 0
+    seen_sessions: set[int] = set()
+
+    for module in _iter_focus_session_modules(module_names):
+        sessions = getattr(module, "_FOCUS_SESSIONS", None)
+        if not isinstance(sessions, dict):
+            continue
+        sessions_id = id(sessions)
+        if sessions_id in seen_sessions:
+            continue
+        seen_sessions.add(sessions_id)
+        cleared += len(sessions)
+        sessions.clear()
+
+    return cleared
+
+
 def has_focus_session(
     session_key: str,
     module_names: Iterable[str] = FOCUS_SESSION_MODULE_CANDIDATES,

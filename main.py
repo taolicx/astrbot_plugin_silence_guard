@@ -12,6 +12,7 @@ try:
     from .deepseek_judge import DeepSeekJudge
     from .plugin_compat import (
         build_focus_session_key,
+        clear_all_focus_sessions,
         clear_focus_session,
         has_focus_session,
         mark_focus_session_expired,
@@ -37,6 +38,7 @@ except ImportError:
     from deepseek_judge import DeepSeekJudge
     from plugin_compat import (
         build_focus_session_key,
+        clear_all_focus_sessions,
         clear_focus_session,
         has_focus_session,
         mark_focus_session_expired,
@@ -61,6 +63,13 @@ except ImportError:
 
 
 PLUGIN_NAME = "astrbot_plugin_silence_guard"
+CLEAR_ALL_COMMANDS = {
+    "结束所有对话",
+    "清空连续对话",
+    "停止所有监听",
+    "结束所有监听",
+    "关闭所有连续对话",
+}
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -93,7 +102,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     PLUGIN_NAME,
     "taolicx",
     "根据上下文判断 AstrBot 什么时候应该安静，不该回复时直接拦截事件。",
-    "1.0.0",
+    "1.1.0",
 )
 class SilenceGuardPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig | None = None) -> None:
@@ -120,6 +129,11 @@ class SilenceGuardPlugin(Star):
             return
 
         text = event.message_str or event.get_message_str()
+        if self._is_clear_all_command(event, text):
+            cleared = self._clear_all_sessions()
+            yield event.plain_result(f"已结束所有正在监听的连续对话：{cleared} 个").stop_event()
+            return
+
         session_key = event.unified_msg_origin
         state = self._state(session_key)
         now = time.time()
@@ -162,6 +176,15 @@ class SilenceGuardPlugin(Star):
         if decision.action == WAKE:
             event.continue_event()
             return
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @filter.command(
+        "结束所有对话",
+        alias={"清空连续对话", "停止所有监听", "结束所有监听", "关闭所有连续对话"},
+    )
+    async def clear_all_focus_sessions_cmd(self, event: AstrMessageEvent):
+        cleared = self._clear_all_sessions()
+        yield event.plain_result(f"已结束所有正在监听的连续对话：{cleared} 个").stop_event()
 
     @filter.after_message_sent(priority=-100)
     async def record_bot_reply(self, event: AstrMessageEvent) -> None:
@@ -271,3 +294,46 @@ class SilenceGuardPlugin(Star):
             return
         mark_focus_session_expired(session_key)
         clear_focus_session(session_key)
+
+    def _clear_all_sessions(self) -> int:
+        cleared = clear_all_focus_sessions()
+        self.states.clear()
+        return cleared
+
+    def _is_clear_all_command(self, event: AstrMessageEvent, text: str) -> bool:
+        is_admin = getattr(event, "is_admin", None)
+        if not callable(is_admin):
+            return False
+        try:
+            if not is_admin():
+                return False
+        except Exception:
+            return False
+        normalized = " ".join(str(text or "").strip().split())
+        if not normalized:
+            return False
+
+        wake_prefixes = self._wake_prefixes()
+        for prefix in wake_prefixes:
+            if prefix and normalized.startswith(prefix):
+                normalized = normalized[len(prefix) :].strip()
+                break
+
+        return normalized in CLEAR_ALL_COMMANDS
+
+    def _wake_prefixes(self) -> tuple[str, ...]:
+        try:
+            global_config = self.context.get_config()
+            raw = global_config.get("wake_prefix", ["/"])
+        except Exception:
+            raw = ["/"]
+
+        if isinstance(raw, str):
+            values = [raw]
+        elif isinstance(raw, (list, tuple, set)):
+            values = [str(item) for item in raw]
+        else:
+            values = ["/"]
+
+        prefixes = tuple(prefix.strip() for prefix in values if str(prefix).strip())
+        return prefixes or ("/",)

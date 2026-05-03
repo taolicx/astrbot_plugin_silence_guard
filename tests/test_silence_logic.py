@@ -20,6 +20,7 @@ from silence_logic import (
 from deepseek_judge import DeepSeekJudge
 from plugin_compat import (
     build_focus_session_key,
+    clear_all_focus_sessions,
     clear_focus_session,
     has_focus_session,
     mark_focus_session_expired,
@@ -268,6 +269,21 @@ class SilenceLogicTest(unittest.TestCase):
             self.assertTrue(has_focus_session(key, ()))
             self.assertTrue(clear_focus_session(key, ()))
             self.assertNotIn(key, module._FOCUS_SESSIONS)
+        finally:
+            sys.modules.pop("data.plugins.astrbot_plugin_focus_session.main", None)
+
+    def test_focus_session_clear_all_helper(self):
+        module = types.SimpleNamespace(
+            _FOCUS_SESSIONS={
+                "default(aiocqhttp)::1": object(),
+                "default(aiocqhttp)::2": object(),
+            }
+        )
+        sys.modules["data.plugins.astrbot_plugin_focus_session.main"] = module
+        try:
+            cleared = clear_all_focus_sessions(())
+            self.assertEqual(cleared, 2)
+            self.assertEqual(module._FOCUS_SESSIONS, {})
         finally:
             sys.modules.pop("data.plugins.astrbot_plugin_focus_session.main", None)
 
