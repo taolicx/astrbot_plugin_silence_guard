@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import importlib
+import sys
 from typing import Any, Iterable
 
 
 FOCUS_SESSION_MODULE_CANDIDATES = (
+    "data.plugins.astrbot_plugin_focus_session.main",
+    "data.plugins.astrbot_plugin_focus_session",
     "astrbot_plugin_focus_session.main",
     "astrbot_plugin_focus_session",
     "focus_session.main",
@@ -30,18 +33,14 @@ def clear_focus_session(
     if not session_key:
         return False
 
-    for module_name in module_names:
-        try:
-            module = importlib.import_module(module_name)
-        except Exception:
-            continue
-
+    cleared = False
+    for module in _iter_focus_session_modules(module_names):
         sessions = getattr(module, "_FOCUS_SESSIONS", None)
         if isinstance(sessions, dict) and session_key in sessions:
             sessions.pop(session_key, None)
-            return True
+            cleared = True
 
-    return False
+    return cleared
 
 
 def has_focus_session(
@@ -51,12 +50,7 @@ def has_focus_session(
     if not session_key:
         return False
 
-    for module_name in module_names:
-        try:
-            module = importlib.import_module(module_name)
-        except Exception:
-            continue
-
+    for module in _iter_focus_session_modules(module_names):
         sessions = getattr(module, "_FOCUS_SESSIONS", None)
         if isinstance(sessions, dict) and session_key in sessions:
             return True
@@ -71,12 +65,8 @@ def mark_focus_session_expired(
     if not session_key:
         return False
 
-    for module_name in module_names:
-        try:
-            module = importlib.import_module(module_name)
-        except Exception:
-            continue
-
+    marked = False
+    for module in _iter_focus_session_modules(module_names):
         sessions = getattr(module, "_FOCUS_SESSIONS", None)
         if isinstance(sessions, dict) and session_key in sessions:
             session = sessions.get(session_key)
@@ -89,6 +79,34 @@ def mark_focus_session_expired(
                     session.last_notice_at = 0
                 except Exception:
                     pass
-            return True
+            marked = True
 
-    return False
+    return marked
+
+
+def _iter_focus_session_modules(module_names: Iterable[str]) -> list[Any]:
+    modules: list[Any] = []
+    seen: set[int] = set()
+
+    for module_name in module_names:
+        try:
+            module = importlib.import_module(module_name)
+        except Exception:
+            module = sys.modules.get(module_name)
+        if module is not None and id(module) not in seen:
+            modules.append(module)
+            seen.add(id(module))
+
+    for module_name, module in tuple(sys.modules.items()):
+        if module is None or id(module) in seen:
+            continue
+        if not (
+            module_name.endswith("astrbot_plugin_focus_session")
+            or module_name.endswith("astrbot_plugin_focus_session.main")
+        ):
+            continue
+        if isinstance(getattr(module, "_FOCUS_SESSIONS", None), dict):
+            modules.append(module)
+            seen.add(id(module))
+
+    return modules

@@ -240,6 +240,17 @@ class SilenceLogicTest(unittest.TestCase):
         finally:
             sys.modules.pop("astrbot_plugin_focus_session", None)
 
+    def test_focus_session_clear_helper_finds_astrbot_loaded_module(self):
+        key = "default(aiocqhttp)::1556592332"
+        module = types.SimpleNamespace(_FOCUS_SESSIONS={key: object()})
+        sys.modules["data.plugins.astrbot_plugin_focus_session.main"] = module
+        try:
+            self.assertTrue(has_focus_session(key, ()))
+            self.assertTrue(clear_focus_session(key, ()))
+            self.assertNotIn(key, module._FOCUS_SESSIONS)
+        finally:
+            sys.modules.pop("data.plugins.astrbot_plugin_focus_session.main", None)
+
     def test_focus_session_mark_expired_helper(self):
         session = type("Session", (), {"expires_at": 123, "last_notice_at": 456})()
         module = types.SimpleNamespace(_FOCUS_SESSIONS={"default(aiocqhttp)::1556592332": session})
