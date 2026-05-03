@@ -92,13 +92,15 @@ class DeepSeekJudge:
                 ),
                 timeout=float(self.config.get("judge_timeout_seconds", 3)),
             )
+        except asyncio.TimeoutError:
+            self._log_debug("SilenceGuard judge timeout; falling back to rules.")
+            decision = Decision(UNCERTAIN, "judge_timeout", source="judge")
         except Exception as exc:  # noqa: BLE001 - plugin should fail open
-            if self.logger:
-                self.logger.warning(
-                    "SilenceGuard judge failed: %s (%s)",
-                    exc.__class__.__name__,
-                    exc,
-                )
+            self._log_warning(
+                "SilenceGuard judge failed: %s (%s)",
+                exc.__class__.__name__,
+                exc,
+            )
             decision = Decision(UNCERTAIN, "judge_request_failed", source="judge")
 
         self._set_cache(cache_key, decision)
@@ -197,6 +199,20 @@ class DeepSeekJudge:
         if isinstance(provider_id, str) and provider_id.strip():
             return provider_id.strip()
         return None
+
+    def _log_debug(self, message: str, *args: Any) -> None:
+        if not self.logger or not self.config.get("debug_log", False):
+            return
+        debug = getattr(self.logger, "debug", None)
+        if callable(debug):
+            debug(message, *args)
+
+    def _log_warning(self, message: str, *args: Any) -> None:
+        if not self.logger or not self.config.get("debug_log", False):
+            return
+        warning = getattr(self.logger, "warning", None)
+        if callable(warning):
+            warning(message, *args)
 
     def _extract_json(self, content: str) -> dict[str, Any] | None:
         text = content.strip()

@@ -49,6 +49,26 @@ class DummyProvider:
         return type("Resp", (), {"completion_text": self._text})()
 
 
+class TimeoutProvider(DummyProvider):
+    async def text_chat(self, **kwargs):
+        import asyncio
+
+        await asyncio.sleep(0.05)
+        return type("Resp", (), {"completion_text": "{}"})()
+
+
+class DummyLogger:
+    def __init__(self) -> None:
+        self.warnings: list[tuple] = []
+        self.debugs: list[tuple] = []
+
+    def warning(self, *args):
+        self.warnings.append(args)
+
+    def debug(self, *args):
+        self.debugs.append(args)
+
+
 class DummyContext:
     def __init__(self, provider=None) -> None:
         self.provider = provider or DummyProvider()
@@ -317,6 +337,30 @@ class SilenceLogicTest(unittest.TestCase):
             )
         )
         self.assertEqual(decision.action, NO_REPLY)
+
+    def test_provider_judge_timeout_is_quiet_fallback(self):
+        logger = DummyLogger()
+        judge = DeepSeekJudge(
+            {
+                "judge_provider_id": "",
+                "judge_timeout_seconds": 0.001,
+                "judge_cache_seconds": 0,
+                "debug_log": False,
+            },
+            DummyContext(provider=TimeoutProvider()),
+            logger=logger,
+        )
+        decision = self._run_async(
+            judge.classify(
+                current_user_message="嗯",
+                recent_context=[],
+                state_summary={},
+            )
+        )
+        self.assertEqual(decision.action, UNCERTAIN)
+        self.assertEqual(decision.reason, "judge_timeout")
+        self.assertEqual(logger.warnings, [])
+        self.assertEqual(logger.debugs, [])
 
     def _run_async(self, coro):
         import asyncio
