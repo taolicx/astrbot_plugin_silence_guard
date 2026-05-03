@@ -18,14 +18,47 @@ UNCERTAIN = "UNCERTAIN"
 DEFAULT_SILENCE_KEYWORDS = [
     "闭嘴",
     "别回",
+    "别回我",
+    "不回",
+    "不回我",
     "不要回",
     "不用回",
+    "不回复",
+    "别回复",
+    "不要回复",
+    "不用回复",
+    "不说话",
     "无需回复",
     "不必回复",
     "别说了",
+    "别说话",
     "不要说话",
+    "先别说话",
+    "嘘一声",
+    "嘘一下",
+    "安静点",
+    "小声点",
+    "别出声",
+    "不要出声",
     "安静",
     "住口",
+    "别吵",
+    "别搭话",
+    "别接话",
+    "别搭理我",
+    "别理我",
+    "不用理我",
+    "别管我",
+    "别烦我",
+    "别来烦我",
+    "别打扰",
+    "不要打扰",
+    "停一下",
+    "暂停回复",
+    "静默",
+    "保持沉默",
+    "mute",
+    "silence",
     "shut up",
     "be quiet",
     "stop talking",
@@ -35,13 +68,28 @@ DEFAULT_FAREWELL_KEYWORDS = [
     "晚安",
     "睡了",
     "我睡了",
+    "准备睡了",
+    "睡觉了",
+    "去睡了",
+    "困了",
     "拜拜",
     "拜",
+    "拜了",
     "再见",
+    "先走了",
+    "我走了",
     "886",
     "88",
     "下了",
+    "我下了",
+    "撤了",
+    "溜了",
     "回头聊",
+    "明天聊",
+    "下次聊",
+    "bye",
+    "good night",
+    "gn",
 ]
 
 DEFAULT_WAKE_KEYWORDS = [
@@ -50,11 +98,22 @@ DEFAULT_WAKE_KEYWORDS = [
     "可以说话了",
     "恢复回复",
     "解除静默",
+    "取消静默",
     "别闭嘴了",
+    "不用闭嘴了",
     "说话",
+    "你说",
     "回答我",
+    "回我",
     "在吗",
     "醒醒",
+    "继续说",
+    "接着说",
+    "可以回复了",
+    "开口",
+    "回来",
+    "resume",
+    "unmute",
 ]
 
 DEFAULT_HARD_CLOSERS = [
@@ -64,6 +123,7 @@ DEFAULT_HARD_CLOSERS = [
     "不聊了",
     "别聊了",
     "这个不聊了",
+    "先不聊了",
     "不用管了",
     "你不用管",
     "不用分析",
@@ -73,8 +133,21 @@ DEFAULT_HARD_CLOSERS = [
     "不要回复",
     "别理我",
     "不用理我",
+    "不用继续了",
+    "别继续了",
+    "结束吧",
+    "结束",
+    "停",
+    "停一下",
+    "打住",
+    "别展开",
+    "不用展开",
     "我想静静",
     "让我静静",
+    "回头再说",
+    "以后再说",
+    "先不说了",
+    "算了吧",
 ]
 
 DEFAULT_ACKS = [
@@ -82,13 +155,21 @@ DEFAULT_ACKS = [
     "嗯嗯",
     "恩",
     "恩恩",
+    "昂",
+    "哦",
+    "哦哦",
+    "噢",
+    "噢噢",
     "好",
     "好的",
     "好吧",
     "行",
     "行吧",
+    "成",
     "可以",
     "ok",
+    "okok",
+    "okk",
     "okay",
     "收到",
     "明白",
@@ -98,10 +179,16 @@ DEFAULT_ACKS = [
     "是的",
     "对",
     "对的",
+    "对对",
     "没事",
     "没事了",
+    "没问题",
     "不用了",
     "算了",
+    "行了",
+    "可以了",
+    "差不多",
+    "就这样吧",
 ]
 
 
@@ -168,16 +255,28 @@ def compact_text(text: str) -> str:
 
 
 def normalize_keyword_list(value: Any, defaults: Iterable[str]) -> list[str]:
+    default_items = [normalize_text(item) for item in defaults if normalize_text(item)]
     if value is None:
-        return list(defaults)
+        return _dedupe_keywords(default_items)
     if isinstance(value, str):
         items = re.split(r"[\n,，]+", value)
     elif isinstance(value, Iterable):
         items = [str(item) for item in value]
     else:
-        return list(defaults)
+        return _dedupe_keywords(default_items)
     cleaned = [normalize_text(item) for item in items if normalize_text(item)]
-    return cleaned or list(defaults)
+    return _dedupe_keywords([*default_items, *cleaned])
+
+
+def _dedupe_keywords(items: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        key = compact_text(item)
+        if key and key not in seen:
+            seen.add(key)
+            result.append(item)
+    return result
 
 
 def is_question_like(text: str) -> bool:
@@ -188,6 +287,20 @@ def is_question_like(text: str) -> bool:
 def is_hypothetical_or_meta(text: str) -> bool:
     compact = compact_text(text)
     return any(marker in compact for marker in HYPOTHETICAL_MARKERS)
+
+
+def is_hush_command(text: str) -> bool:
+    compact = compact_text(text)
+    return compact in {"嘘", "嘘一声", "嘘一下"}
+
+
+def has_duration_hint(text: str) -> bool:
+    compact = compact_text(text)
+    if "半小时" in compact or "半个小时" in compact:
+        return True
+    if any(marker in compact for marker in ("一会", "一阵", "一段时间", "暂时", "一下")):
+        return True
+    return bool(re.search(r"(\d+|[一二两三四五六七八九十]{1,3})(秒|分钟|分|小时|时|天)", compact))
 
 
 def contains_any(text: str, keywords: Iterable[str]) -> bool:
@@ -212,6 +325,39 @@ def exactish_any(text: str, keywords: Iterable[str], max_extra: int = 2) -> bool
         if compact.startswith(key) and len(compact) <= len(key) + max_extra:
             return True
         if compact.endswith(key) and len(compact) <= len(key) + max_extra:
+            return True
+    return False
+
+
+def wake_keyword_matches(text: str, keywords: Iterable[str]) -> bool:
+    compact = compact_text(text)
+    if not compact:
+        return False
+    negation_prefixes = (
+        "别",
+        "不要",
+        "不用",
+        "无需",
+        "不必",
+        "不",
+        "先别",
+        "先不要",
+        "别再",
+        "停止",
+        "暂停",
+    )
+    for keyword in keywords:
+        key = compact_text(keyword)
+        if not key:
+            continue
+        if compact == key:
+            return True
+        if compact.startswith(key) and len(compact) <= len(key) + 4:
+            return True
+        if compact.endswith(key) and len(compact) <= len(key) + 4:
+            prefix = compact[: -len(key)]
+            if any(prefix.endswith(negation) for negation in negation_prefixes):
+                continue
             return True
     return False
 
@@ -323,8 +469,11 @@ def analyze_rules(
     if is_hypothetical_or_meta(text) and is_question_like(text):
         return Decision(REPLY, "hypothetical_question")
 
-    if exactish_any(text, wake_keywords, max_extra=4):
+    if wake_keyword_matches(text, wake_keywords):
         return Decision(WAKE, "wake_keyword")
+
+    if is_hush_command(text):
+        return Decision(NO_REPLY, "hush_command")
 
     if state.is_muted(now):
         return Decision(NO_REPLY, "conversation_is_muted")
@@ -339,13 +488,8 @@ def analyze_rules(
     mentions_silence = contains_any(text, silence_keywords)
     if mentions_silence:
         duration = parse_duration_seconds(text, default_mute_seconds)
-        short_command = len(compact) <= 16
-        explicit_pattern = re.search(
-            r"(闭嘴|住口|安静|别说了|不要说话|别回|不用回|不要回|别回复|不用回复|不要回复)",
-            compact,
-        )
-        if explicit_pattern and not (is_hypothetical_or_meta(text) and is_question_like(text)):
-            if short_command or re.search(r"(一会|一下|分钟|小时|秒|天|以后|现在|先)", compact):
+        if not (is_hypothetical_or_meta(text) and is_question_like(text)):
+            if has_duration_hint(text):
                 return Decision(MUTE, "silence_command", mute_seconds=duration)
             return Decision(NO_REPLY, "no_reply_command")
 
