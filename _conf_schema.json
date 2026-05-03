@@ -84,6 +84,18 @@
     "description": "允许机器人对用户首次晚安/拜拜回复一次",
     "default": true
   },
+  "admin_clear_all_commands": {
+    "type": "list",
+    "description": "管理员结束所有连续对话的自定义指令",
+    "hint": "只有管理员触发。可填写多个短语，例如：清场、全部停止、停止监听。旧默认指令会保留兜底。",
+    "default": [
+      "结束所有对话",
+      "清空连续对话",
+      "停止所有监听",
+      "结束所有监听",
+      "关闭所有连续对话"
+    ]
+  },
   "silence_keywords": {
     "type": "list",
     "description": "闭嘴/别回复类关键词",

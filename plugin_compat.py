@@ -26,6 +26,49 @@ def build_focus_session_key(event: Any) -> str:
     return f"{origin}::{sender_id}"
 
 
+def normalize_command_text(text: Any) -> str:
+    return " ".join(str(text or "").strip().split())
+
+
+def parse_command_list(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+
+    if isinstance(value, str):
+        raw_items = value.replace("，", ",").replace("\n", ",").split(",")
+    elif isinstance(value, (list, tuple, set)):
+        raw_items = []
+        for item in value:
+            if isinstance(item, dict):
+                for key in ("value", "command", "name", "text"):
+                    raw = item.get(key)
+                    if raw is not None:
+                        raw_items.append(raw)
+                        break
+            else:
+                raw_items.append(item)
+    else:
+        raw_items = [value]
+
+    commands: list[str] = []
+    seen: set[str] = set()
+    for item in raw_items:
+        command = normalize_command_text(item)
+        if command and command not in seen:
+            commands.append(command)
+            seen.add(command)
+    return tuple(commands)
+
+
+def strip_wake_prefix(text: Any, wake_prefixes: Iterable[str]) -> str:
+    normalized = normalize_command_text(text)
+    for prefix in wake_prefixes:
+        prefix = str(prefix or "").strip()
+        if prefix and normalized.startswith(prefix):
+            return normalized[len(prefix) :].strip()
+    return normalized
+
+
 def clear_focus_session(
     session_key: str,
     module_names: Iterable[str] = FOCUS_SESSION_MODULE_CANDIDATES,

@@ -2,7 +2,7 @@ name: astrbot_plugin_silence_guard
 display_name: Silence Guard
 short_desc: 根据上下文判断什么时候不该继续回复
 desc: 根据上下文判断 AstrBot 什么时候应该安静，不该回复时直接拦截事件，并可联动 focus_session 结束连续对话。
-version: v1.1.0
+version: v1.2.0
 author: taolicx
 repo: https://github.com/taolicx/astrbot_plugin_silence_guard
 support_platforms: []

@@ -24,6 +24,8 @@ from plugin_compat import (
     clear_focus_session,
     has_focus_session,
     mark_focus_session_expired,
+    parse_command_list,
+    strip_wake_prefix,
 )
 
 
@@ -286,6 +288,17 @@ class SilenceLogicTest(unittest.TestCase):
             self.assertEqual(module._FOCUS_SESSIONS, {})
         finally:
             sys.modules.pop("data.plugins.astrbot_plugin_focus_session.main", None)
+
+    def test_custom_admin_command_list_parser(self):
+        commands = parse_command_list("清场，全部停止\n停止监听, 清场")
+        self.assertEqual(commands, ("清场", "全部停止", "停止监听"))
+        object_commands = parse_command_list([{"value": " 全部闭嘴 "}, {"text": "收工"}])
+        self.assertEqual(object_commands, ("全部闭嘴", "收工"))
+
+    def test_strip_wake_prefix_for_custom_admin_command(self):
+        self.assertEqual(strip_wake_prefix("/清场", ("/", "!",)), "清场")
+        self.assertEqual(strip_wake_prefix("! 全部停止", ("/", "!")), "全部停止")
+        self.assertEqual(strip_wake_prefix("停止监听", ("/",)), "停止监听")
 
     def test_focus_session_mark_expired_helper(self):
         session = type("Session", (), {"expires_at": 123, "last_notice_at": 456})()

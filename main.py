@@ -16,6 +16,8 @@ try:
         clear_focus_session,
         has_focus_session,
         mark_focus_session_expired,
+        parse_command_list,
+        strip_wake_prefix,
     )
     from .silence_logic import (
         MUTE,
@@ -42,6 +44,8 @@ except ImportError:
         clear_focus_session,
         has_focus_session,
         mark_focus_session_expired,
+        parse_command_list,
+        strip_wake_prefix,
     )
     from silence_logic import (
         MUTE,
@@ -63,13 +67,13 @@ except ImportError:
 
 
 PLUGIN_NAME = "astrbot_plugin_silence_guard"
-CLEAR_ALL_COMMANDS = {
+DEFAULT_CLEAR_ALL_COMMANDS = (
     "结束所有对话",
     "清空连续对话",
     "停止所有监听",
     "结束所有监听",
     "关闭所有连续对话",
-}
+)
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -90,6 +94,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "active_chat_seconds": 300,
     "reply_once_to_farewell": True,
     "debug_log": False,
+    "admin_clear_all_commands": list(DEFAULT_CLEAR_ALL_COMMANDS),
     "silence_keywords": DEFAULT_SILENCE_KEYWORDS,
     "farewell_keywords": DEFAULT_FAREWELL_KEYWORDS,
     "wake_keywords": DEFAULT_WAKE_KEYWORDS,
@@ -102,7 +107,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     PLUGIN_NAME,
     "taolicx",
     "根据上下文判断 AstrBot 什么时候应该安静，不该回复时直接拦截事件。",
-    "1.1.0",
+    "1.2.0",
 )
 class SilenceGuardPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig | None = None) -> None:
@@ -309,17 +314,17 @@ class SilenceGuardPlugin(Star):
                 return False
         except Exception:
             return False
-        normalized = " ".join(str(text or "").strip().split())
+        normalized = strip_wake_prefix(text, self._wake_prefixes())
         if not normalized:
             return False
 
-        wake_prefixes = self._wake_prefixes()
-        for prefix in wake_prefixes:
-            if prefix and normalized.startswith(prefix):
-                normalized = normalized[len(prefix) :].strip()
-                break
+        return normalized in self._clear_all_commands()
 
-        return normalized in CLEAR_ALL_COMMANDS
+    def _clear_all_commands(self) -> set[str]:
+        cfg = self._config()
+        commands = set(DEFAULT_CLEAR_ALL_COMMANDS)
+        commands.update(parse_command_list(cfg.get("admin_clear_all_commands")))
+        return commands
 
     def _wake_prefixes(self) -> tuple[str, ...]:
         try:
